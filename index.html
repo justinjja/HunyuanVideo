@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Video Generation</title>
+<style>
+  body { font-family: Arial, sans-serif; }
+  .container { max-width: 600px; margin: 20px auto; }
+  textarea { width: 100%; height: 300px; }
+  .results { margin-top: 20px; }
+  pre { background-color: #f4f4f4; padding: 10px; border-radius: 5px; }
+</style>
+</head>
+<body>
+<div class="container">
+    <h1>Generate a Video</h1>
+    <form id="generate-form">
+        <label for="height">Video Height (max 720):</label><br>
+        <input type="number" id="height" name="height" required max="720" value="450"><br><br>
+
+        <label for="width">Video Width (max 1280):</label><br>
+        <input type="number" id="width" name="width" required max="1280" value="800"><br><br>
+
+        <label for="length">Video Length (41 to 121):</label><br>
+        <input type="number" id="length" name="length" required min="41" max="121" value="41"><br><br>
+
+        <label for="prompt">Prompt:</label><br>
+        <textarea id="prompt" name="prompt" required>A cat walks on the grass, realistic style.</textarea><br><br>
+
+        <button type="submit">Generate</button>
+    </form>
+
+    <h2>Status</h2>
+    <pre id="log-output"></pre>
+
+    <div class="results" id="results"></div>
+</div>
+
+<script>
+const form = document.getElementById('generate-form');
+const logOutput = document.getElementById('log-output');
+const resultsDiv = document.getElementById('results');
+
+form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    logOutput.textContent = ""; // Clear the log output
+    resultsDiv.innerHTML = ""; // Clear the results section
+
+    const formData = new FormData(form);
+
+    try {
+        // Start the request
+        const response = await fetch('/generate', {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            logOutput.textContent = "Error: " + response.statusText;
+            return;
+        }
+
+        // Read the stream
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let { value, done } = await reader.read();
+        let buffer = '';
+
+
+        while (!done) {
+            buffer += decoder.decode(value, { stream: true });
+            let lines = buffer.split('\n');
+            
+            // Keep the last partial line in the buffer
+            buffer = lines.pop();
+            
+            if (lines.length > 0) {
+                // Get the last complete line
+                const lastCompleteLine = lines[lines.length - 1].trim();
+                if (lastCompleteLine) {
+                    logOutput.textContent = lastCompleteLine;
+                }
+            }
+
+            ({ value, done } = await reader.read());
+        }
+
+        // Process any remaining buffer after the stream is done
+        if (buffer.trim()) {
+            logOutput.textContent = buffer.trim();
+        }
+
+        // After completion, try to guess the output file
+        const match = logOutput.textContent.match(/Sample save to:\s*(\.\/results\/[^\s]+)/);
+        if (match) {
+            const videoPath = match[1];
+            const publicURL = videoPath.replace('./results', '/results');
+            resultsDiv.innerHTML = `
+                <p>Video generated successfully!</p>
+                <p><a href="${publicURL}" target="_blank">View/Download Video</a></p>
+                <video src="${publicURL}" controls width="400"></video>
+            `;
+        } else {
+            resultsDiv.innerHTML = `<p>Could not find the generated video file link in the logs. Check the server for results.</p>`;
+        }
+    } catch (error) {
+        console.error('Error during fetch:', error);
+        logOutput.textContent = "An unexpected error occurred.";
+    }
+});
+</script>
+</body>
+</html>
