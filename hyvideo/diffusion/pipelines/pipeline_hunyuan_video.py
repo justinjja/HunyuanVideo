@@ -959,6 +959,7 @@ class HunyuanVideoPipeline(DiffusionPipeline):
         # if is_progress_bar:
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
+                print(f"Completed step {i+1}/{num_inference_steps}", flush=True)
                 if self.interrupt:
                     continue
 
