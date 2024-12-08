@@ -9,28 +9,54 @@ from hyvideo.config import parse_args
 from hyvideo.inference import HunyuanVideoSampler
 
 
+class ModelSingleton:
+    """
+    Singleton class to keep the HunyuanVideoSampler model loaded in memory.
+    """
+    _instance = None
+    _model = None
+
+    @staticmethod
+    def get_instance(args):
+        """
+        Get the singleton instance of the model. Initializes the model if not already loaded.
+        """
+        if ModelSingleton._instance is None:
+            ModelSingleton(args)
+        return ModelSingleton._model
+
+    def __init__(self, args):
+        if ModelSingleton._instance is not None:
+            raise Exception("This is a singleton class!")
+        models_root_path = Path(args.model_base)
+        if not models_root_path.exists():
+            raise ValueError(f"`models_root` not exists: {models_root_path}")
+
+        # Load the model once
+        logger.info("Loading the HunyuanVideoSampler model...")
+        ModelSingleton._model = HunyuanVideoSampler.from_pretrained(
+            models_root_path, args=args
+        )
+        logger.info("Model loaded successfully.")
+        ModelSingleton._instance = self
+
+
 def main():
+    # Parse the command-line arguments
     args = parse_args()
     print(args)
-    models_root_path = Path(args.model_base)
-    if not models_root_path.exists():
-        raise ValueError(f"`models_root` not exists: {models_root_path}")
-    
-    # Create save folder to save the samples
-    save_path = args.save_path if args.save_path_suffix=="" else f'{args.save_path}_{args.save_path_suffix}'
-    if not os.path.exists(args.save_path):
+
+    # Get the model instance (singleton)
+    model = ModelSingleton.get_instance(args)
+
+    # Prepare save path
+    save_path = args.save_path if args.save_path_suffix == "" else f'{args.save_path}_{args.save_path_suffix}'
+    if not os.path.exists(save_path):
         os.makedirs(save_path, exist_ok=True)
 
-    # Load models
-    hunyuan_video_sampler = HunyuanVideoSampler.from_pretrained(models_root_path, args=args)
-    
-    # Get the updated args
-    args = hunyuan_video_sampler.args
-
     # Start sampling
-    # TODO: batch inference check
-    outputs = hunyuan_video_sampler.predict(
-        prompt=args.prompt, 
+    outputs = model.predict(
+        prompt=args.prompt,
         height=args.video_size[0],
         width=args.video_size[1],
         video_length=args.video_length,
@@ -41,17 +67,18 @@ def main():
         num_videos_per_prompt=args.num_videos,
         flow_shift=args.flow_shift,
         batch_size=args.batch_size,
-        embedded_guidance_scale=args.embedded_cfg_scale
+        embedded_guidance_scale=args.embedded_cfg_scale,
     )
     samples = outputs['samples']
-    
+
     # Save samples
     for i, sample in enumerate(samples):
         sample = samples[i].unsqueeze(0)
         time_flag = datetime.fromtimestamp(time.time()).strftime("%Y-%m-%d-%H:%M:%S")
-        save_path = f"{save_path}/{time_flag}_seed{outputs['seeds'][i]}_{outputs['prompts'][i][:100].replace('/','')}.mp4"
-        save_videos_grid(sample, save_path, fps=24)
-        logger.info(f'Sample save to: {save_path}')
+        video_save_path = f"{save_path}/{time_flag}_seed{outputs['seeds'][i]}_{outputs['prompts'][i][:100].replace('/', '')}.mp4"
+        save_videos_grid(sample, video_save_path, fps=24)
+        logger.info(f"Sample saved to: {video_save_path}")
+
 
 if __name__ == "__main__":
     main()
